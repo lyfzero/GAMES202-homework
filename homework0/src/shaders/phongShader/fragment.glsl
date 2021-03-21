@@ -16,7 +16,7 @@ varying highp vec3 vNormal;
 void main(void) {
   vec3 color;
   if (uTextureSample == 1) {
-    color = pow(texture2D(uSampler, vTextureCoord).rgb, vec3(2.2));
+    color = pow(texture2D(uSampler, vTextureCoord).rgb, vec3(2.2)); // 2.2 伽马校正
   } else {
     color = uKd;
   }
