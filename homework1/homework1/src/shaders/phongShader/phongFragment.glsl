@@ -88,7 +88,14 @@ float findBlocker( sampler2D shadowMap,  vec2 uv, float zReceiver ) {
 }
 
 float PCF(sampler2D shadowMap, vec4 coords) {
-  return 1.0;
+  float visibility = 0;
+  for(int i = 0; i < NUM_SAMPLES; i++) {
+    vec2 point = coords.xy + poissonDisk[i];
+    float queryDepth = unpack(texture2D(shadowMap, point));
+    visibility += queryDepth < depth ? 0.0 : 1.0;
+  }
+  visibility /= NUM_SAMPLES;
+  return visibility;
 }
 
 float PCSS(sampler2D shadowMap, vec4 coords){
@@ -105,7 +112,10 @@ float PCSS(sampler2D shadowMap, vec4 coords){
 
 
 float useShadowMap(sampler2D shadowMap, vec4 shadowCoord){
-  return 1.0;
+  // 查询当前主色点在 ShadowMap 上记录的深度值，与转换到light space 的深度值比较后返回visibility项
+  float queryDepth = unpack(texture2D(shadowMap, shadowCoord.xy));
+  float depth = shadowCoord.z;
+  return queryDepth < depth ? 0.0 : 1.0;
 }
 
 vec3 blinnPhong() {
@@ -134,12 +144,14 @@ vec3 blinnPhong() {
 void main(void) {
 
   float visibility;
+  vec3 shadowCoord = (vPositionFromLight.xyz / vPositionFromLight.w + 1.0) * 0.5;
+
   //visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0));
-  //visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
+  visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
   //visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
 
   vec3 phongColor = blinnPhong();
 
-  //gl_FragColor = vec4(phongColor * visibility, 1.0);
-  gl_FragColor = vec4(phongColor, 1.0);
+  gl_FragColor = vec4(phongColor * visibility, 1.0);
+  //gl_FragColor = vec4(phongColor, 1.0);
 }
