@@ -15,14 +15,13 @@ varying highp vec3 vFragPos;
 varying highp vec3 vNormal;
 
 // Shadow map related variables
-#define NUM_SAMPLES 30
+#define NUM_SAMPLES 50
 #define BLOCKER_SEARCH_NUM_SAMPLES NUM_SAMPLES
 #define PCF_NUM_SAMPLES NUM_SAMPLES
 #define NUM_RINGS 10
 
-#define FILTER_SIZE 0.002
-#define W_LIGHT 0.002
-
+#define FILTER_SIZE  10.0 / 2048.0
+#define W_LIGHT 0.5
 #define EPS 1e-3
 #define PI 3.141592653589793
 #define PI2 6.283185307179586
@@ -88,17 +87,20 @@ void uniformDiskSamples( const in vec2 randomSeed ) {
 
 float findBlocker( sampler2D shadowMap,  vec2 uv, float zReceiver ) {
 	float blockerValue = 0.0;
-  float blockerNum = 0.0;
+  float blockerCount = 0.0;
   poissonDiskSamples(uv);
   for(int i = 0; i < BLOCKER_SEARCH_NUM_SAMPLES; i++) {
-    vec2 point = uv + poissonDisk[i] * FILTER_SIZE;
+    vec2 point = uv + poissonDisk[i] * float(FILTER_SIZE);
     float queryDepth = unpack(texture2D(shadowMap, point));
     if(queryDepth < zReceiver) {
       blockerValue += queryDepth;
-      blockerNum++;
+      blockerCount++;
     }
   }
-  blockerValue = blockerValue / blockerNum;
+  if (blockerCount == 0.0) {
+    return 0.0;
+  }
+  blockerValue = blockerValue / blockerCount;
   return blockerValue;
 }
 
@@ -119,13 +121,17 @@ float PCSS(sampler2D shadowMap, vec4 coords){
   float zReceiver = coords.z;
   // STEP 1: avgblocker depth
   float avgBlockerDepth = findBlocker(shadowMap, coords.xy, coords.z);
+  if(avgBlockerDepth == 0.0) {
+    return 1.0;
+  }
+  float filterSize = ((coords.z / avgBlockerDepth - 1.0) * float(W_LIGHT)) * 10.0 / 2048.0;
   // STEP 2: penumbra size
-  float penumbra = (zReceiver - avgBlockerDepth) * float(W_LIGHT) / avgBlockerDepth;
+  float penumbra = (zReceiver - avgBlockerDepth) * W_LIGHT / avgBlockerDepth;
   // STEP 3: filtering
   float visibility = 0.0;
   poissonDiskSamples(coords.xy);
   for(int i = 0; i < PCF_NUM_SAMPLES; i++) {
-    vec2 shadowCoord = coords.xy + poissonDisk[i] * FILTER_SIZE;
+    vec2 shadowCoord = coords.xy + poissonDisk[i] * filterSize;
     float queryDepth = unpack(texture2D(shadowMap, shadowCoord));
     visibility += queryDepth < zReceiver ? 0.0 : 1.0;
   }
