@@ -5,6 +5,8 @@ class MeshRender {
 	#normalBuffer;
 	#texcoordBuffer;
 	#indicesBuffer;
+	#precomputeLTBuffer;
+	#currentEnvmap;
 
 	constructor(gl, mesh, material) {
 
@@ -45,6 +47,10 @@ class MeshRender {
 
 		this.material.setMeshAttribs(extraAttribs);
 		this.shader = this.material.compile(gl);
+		if (material.attribs.some((a) => a === 'aPrecomputeLT')) {
+			this.#precomputeLTBuffer = gl.createBuffer();
+			this.#currentEnvmap = -1;
+		}
 	}
 
 	bindGeometryInfo() {
@@ -69,7 +75,7 @@ class MeshRender {
 				this.shader.program.attribs[this.mesh.verticesName]);
 		}
 
-		if (this.mesh.hasNormals) {
+		if (this.mesh.hasNormals && this.shader.program.attribs[this.mesh.normalsName] >= 0) {
 			const numComponents = 3;
 			const type = gl.FLOAT;
 			const normalize = false;
@@ -87,7 +93,7 @@ class MeshRender {
 				this.shader.program.attribs[this.mesh.normalsName]);
 		}
 
-		if (this.mesh.hasTexcoords) {
+		if (this.mesh.hasTexcoords && this.shader.program.attribs[this.mesh.texcoordsName] >= 0) {
 			const numComponents = 2;
 			const type = gl.FLOAT;
 			const normalize = false;
@@ -201,9 +207,16 @@ class MeshRender {
 		gl.useProgram(this.shader.program.glShaderProgram);
 		
 		// Bind attribute mat3 - LT
-		const buf = gl.createBuffer();
-		gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(precomputeLT[guiParams.envmapId]), gl.STATIC_DRAW);
+		if (this.#precomputeLTBuffer) {
+			gl.bindBuffer(gl.ARRAY_BUFFER, this.#precomputeLTBuffer);
+			if (this.#currentEnvmap !== guiParams.envmapId) {
+				gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(precomputeLT[guiParams.envmapId]), gl.STATIC_DRAW)
+				this.#currentEnvmap = guiParams.envmapId;
+			}
+		}
+		// const buf = gl.createBuffer();
+		// gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+		// gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(precomputeLT[guiParams.envmapId]), gl.STATIC_DRAW);
 	
 		for (var ii = 0; ii < 3; ++ii) {
 			gl.enableVertexAttribArray(this.shader.program.attribs['aPrecomputeLT'] + ii);

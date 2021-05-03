@@ -89,11 +89,12 @@ namespace ProjEnv
 
     // template <typename T> T ProjectSH() {}
 
-    template <size_t SHOrder>
+    template <size_t SHOrder> // 漫反射材质三阶够用了，后续的SH旋转算法不适合高阶SH
     std::vector<Eigen::Array3f> PrecomputeCubemapSH(const std::vector<std::unique_ptr<float[]>> &images,
                                                     const int &width, const int &height,
                                                     const int &channel)
     {
+        // 计算贴图每个像素对应的单位方向向量
         std::vector<Eigen::Vector3f> cubemapDirs;
         cubemapDirs.reserve(6 * width * height);
         for (int i = 0; i < 6; i++)
@@ -125,13 +126,21 @@ namespace ProjEnv
                 {
                     // TODO: here you need to compute light sh of each face of cubemap of each pixel
                     // TODO: 此处你需要计算每个像素下cubemap某个面的球谐系数
-                    Eigen::Vector3f dir = cubemapDirs[i * width * height + y * width + x];
-                    int index = (y * width + x) * channel;
+                    Eigen::Vector3f dir = cubemapDirs[i * width * height + y * width + x]; // 第i张贴图上坐标(x,y)的方向向量
+                    int index = (y * width + x) * channel;     
                     Eigen::Array3f Le(images[i][index + 0], images[i][index + 1],
-                                      images[i][index + 2]);
+                                      images[i][index + 2]);  // 计算像素数组中的像素，该方向上的环境光
+                    float area = CalcArea(x, y, width, height); // 该像素对应的投影面积
+                    // 计算球谐系数
+                    for (int l = 0; l <= SHOrder; l++) {
+                        for (int m = -l; m <= l; m++) {
+                           float sh = sh::EvalSH(l, m, dir.cast<double>().normalized());
+                           SHCoeffiecents[sh::GetIndex(l, m)] += Le * area * sh;
+                        }
+                    }
                 }
             }
-        }
+        } 
         return SHCoeffiecents;
     }
 }
@@ -210,12 +219,21 @@ public:
                 {
                     // TODO: here you need to calculate unshadowed transport term of a given direction
                     // TODO: 此处你需要计算给定方向下的unshadowed传输项球谐函数值
+                    double csn = wi.dot(n);
+                    return csn > 0.0 ? csn : 0.0;
                     return 0;
                 }
                 else
                 {
                     // TODO: here you need to calculate shadowed transport term of a given direction
                     // TODO: 此处你需要计算给定方向下的shadowed传输项球谐函数值
+                    double csn = wi.dot(n);
+                    if(csn > 0.0) {
+                        Ray3f ray = Ray3f(v, wi.normalized());
+                        if(!scene->rayIntersect(ray)) {
+                            return csn;
+                        }
+                    } 
                     return 0;
                 }
             };
@@ -229,7 +247,7 @@ public:
         {
             // TODO: leave for bonus
         }
-
+        std::cout << "write to transport.txt start" <<  std::endl;
         // Save in face format
         for (int f = 0; f < mesh->getTriangleCount(); f++)
         {
@@ -275,10 +293,10 @@ public:
         // TODO: you need to delete the following four line codes after finishing your calculation to SH,
         //       we use it to visualize the normals of model for debug.
         // TODO: 在完成了球谐系数计算后，你需要删除下列四行，这四行代码的作用是用来可视化模型法线
-        if (c.isZero()) {
-            auto n_ = its.shFrame.n.cwiseAbs();
-            return Color3f(n_.x(), n_.y(), n_.z());
-        }
+        // if (c.isZero()) {
+        //     auto n_ = its.shFrame.n.cwiseAbs();
+        //     return Color3f(n_.x(), n_.y(), n_.z());
+        // }
         return c;
     }
 
