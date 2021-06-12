@@ -124,7 +124,7 @@ vec3 GetGBufferDiffuse(vec2 uv) {
  */
 vec3 EvalDiffuse(vec3 wi, vec2 uv) {
   float cos = max(dot(wi, normalize(GetGBufferNormalWorld(uv))), 0.0);
-  vec3 L = vec3(cos * GetGBufferDiffuse(uv) / M_PI);
+  vec3 L = cos * GetGBufferDiffuse(uv) / M_PI;
   return L;
 }
 
@@ -142,12 +142,13 @@ vec3 EvalDirectionalLight(vec2 uv) {
 
 bool RayMarch(vec3 ori, vec3 dir, out vec3 hitPos) {
   vec3 curPos = ori;
-  for(float step = 1.0; step < 200.0; step += 1.0) {
+  for(float step = 0.0; step < 5.0; step += 0.05) {
     curPos = ori + dir * step;
     vec2 curUV = GetScreenCoordinate(curPos);
     float Gdepth = GetGBufferDepth(curUV);
     float depth = GetDepth(curPos);
-    if(depth > Gdepth) {
+    if((depth - Gdepth) > 1e-6) {
+      hitPos = curPos;
       return true;
     }
   }
@@ -164,19 +165,27 @@ void main() {
   vec2 uv = GetScreenCoordinate(vPosWorld.xyz);
 
   L = EvalDiffuse(uLightDir, uv) * EvalDirectionalLight(uv);
-  vec3 hitPos;
   
-  for(float i = 0.0; i < float(SAMPLE_NUM); i++) {
+  vec3 L_indirect = vec3(0.0);
+  vec3 hitPos;
+  vec3 normal = normalize(GetGBufferNormalWorld(uv));
+  vec3 b1, b2;
+  LocalBasis(normal, b1, b2);
+  mat3 transMat = mat3(b1, b2, normal); // 转换dir到世界坐标系
+
+  for(int i = 0; i < SAMPLE_NUM; i++) {
     float pdf = 0.0;
+    Rand1(s);
     vec3 sampleDir = SampleHemisphereUniform(s, pdf);
-    vec3 b1, b2;
-    LocalBasis(GetGBufferNormalWorld(uv), b1, b2);
-    
-      if(RayMarch(vPosWorld.xyz, sampleDir, hitPos)) {
-        vec2 hitUV = GetScreenCoordinate(hitPos);
-        L += EvalDiffuse(uLightDir, hitUV) * EvalDirectionalLight(hitUV) * EvalDiffuse(uLightDir, uv) / pdf;
-      }
+    sampleDir = normalize(transMat * sampleDir);
+
+    if(RayMarch(vPosWorld.xyz, sampleDir, hitPos)) {
+      vec2 hitUV = GetScreenCoordinate(hitPos);
+      L_indirect += (EvalDiffuse(uLightDir, hitUV) * EvalDirectionalLight(hitUV) * EvalDiffuse(sampleDir, uv)) / pdf;
+    }
   }
+  L_indirect /= float(SAMPLE_NUM);
+  L += L_indirect;
   vec3 color = pow(clamp(L, vec3(0.0), vec3(1.0)), vec3(1.0 / 2.2));
   gl_FragColor = vec4(vec3(color.rgb), 1.0);
 }
